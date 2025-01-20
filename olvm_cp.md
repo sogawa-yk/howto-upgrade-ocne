@@ -5,10 +5,41 @@ Phase2から実施。
 # OCK 2.*アップグレード手順
 ## 準備
 ### 1
-OCKイメージを作成する。こちらは`ocne image create`コマンドで作成済みのイメージを利用。
+OCKイメージを作成する。ここでは`ocne image create`コマンドで作成済みのイメージを利用。
 
 ### 2
-OCNE構成ファイルを作成する。(暫定)
+ターゲットノードのネットワークインターフェースの情報を確認しておく。
+```
+[root@oscip084 ~]# ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp3s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 56:6f:4b:b2:00:06 brd ff:ff:ff:ff:ff:ff
+    inet 10.122.15.84/21 brd 10.122.15.255 scope global noprefixroute enp3s0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::546f:4bff:feb2:6/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+3: enp4s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 56:6f:4b:b2:00:07 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.9.84/24 brd 192.168.9.255 scope global noprefixroute enp4s0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::546f:4bff:feb2:7/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+4: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether 72:a4:1b:21:cf:4a brd ff:ff:ff:ff:ff:ff
+    inet 10.244.3.0/32 brd 10.244.3.0 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::70a4:1bff:fe21:cf4a/64 scope link 
+       valid_lft forever preferred_lft forever
+```
+今回は`enp3s0`を利用する。
+
+### 3
+OCNE構成ファイルをオペレーターノードの`~/.ocne/byo_olvm.yaml`として作成する。(暫定)
 ``` yaml
 provider: byo
 name: ocne1x
@@ -46,7 +77,7 @@ extraIgnitionInline: |
             [connection]
             id=Wired Connection
             type=ethernet
-            interface-name=ens18
+            interface-name=enp3s0
             [ipv4]
             address1=10.122.15.84/22,10.122.8.1
             dns=10.115.208.42;
@@ -63,12 +94,12 @@ extraIgnitionInline: |
 
             short-name-mode = "permissive"
 ```
-ロードバランサのIPやノードのネットワークインターフェースは環境に応じて書き換える必要がある。
-
-### 3
-既存の1.xクラスターからkubeconfigを取得し、`~/.kube/kubeconfig.<CLUSTER_NAME>`にコピーする。
+ロードバランサのIPやノードのネットワークインターフェースはアップグレード対象の環境に応じて書き換える必要がある。
 
 ### 4
+既存の1.xクラスターからkubeconfigを取得し、`~/.kube/kubeconfig.<CLUSTER_NAME>`にコピーする。
+
+### 5
 `kubectl get nodes`コマンドを実行し、対象のノード名を取得する。今回は`oscip084.jp.osc.oracle.com`を対象とする。
 ```
 [root@oscip081 ~]# kubectl get nodes
@@ -82,7 +113,7 @@ x6-2-04.jp.osc.oracle.com    Ready                         <none>          39d  
 [root@oscip081 ~]# TARGET_NODE=oscip084.jp.osc.oracle.com
 ```
 
-### 5
+### 6
 対象ノードをドレインする。
 ```
 [root@oscip081 ~]# kubectl drain --ignore-daemonsets $TARGET_NODE
@@ -91,7 +122,7 @@ Warning: ignoring DaemonSet-managed Pods: kube-system/kube-flannel-ds-cjhcg, kub
 node/oscip084.jp.osc.oracle.com drained
 ```
 
-### 6
+### 7
 対象ノードをリセットする。OSC環境では`ocne cluster console`コマンドが利用できないため、直接対象ノードにSSH接続してコマンドを実行する。
 ```
 [root@oscip081 ~]# ssh root@oscip084
@@ -126,22 +157,24 @@ x6-2-03.jp.osc.oracle.com    Ready                         <none>          33d  
 x6-2-04.jp.osc.oracle.com    Ready                         <none>          33d   v1.26.15+1.el8
 ```
 
-### 7
+### 8
 ターゲットノードをシャットダウンする。
+
 ```
 [root@oscip084 ~]# shutdown -h now
 ```
 
-### 8
-Ignitionファイルを生成する。
+### 9
+Ignitionファイルを生成し、生成したIgnitionファイルを配布するwebサーバのホスト（ここではoscip085）にコピーしておく。
 ```
 [root@oscip081 ~]# ocne cluster join -c ~/.ocne/byo_olvm.yaml -k ~/kubeconfig.oscjpenv.oscjpcluster -n 1 > control-plane-3.ign
 Run these commands before booting the new node to allow it to join the cluster:
 	echo "chroot /hostroot kubeadm init phase upload-certs --certificate-key ea1c0d3489a6683bf1c33e06c444527db80ee2326f97957470e039668745d4b3 --upload-certs" | ocne cluster console --node oscip083.jp.osc.oracle.com
 	kubeadm token create i7zn0u.u2wkh7s50y4zlf13
+[root@oscip081 ~]# scp control-plane-3.ign root@oscip085:/root/ostree-repo
 ```
 
-### 9
+### 10
 前述のとおり、OSC環境では`ocne cluster console`コマンドは利用できないため、ノードにログインして直接指示のコマンドを実行する。今回は`oscip083.jp.osc.oracle.com'にログインして実行する。
 ```
 [root@oscip081 ~]# ssh root@oscip083
@@ -156,8 +189,8 @@ ea1c0d3489a6683bf1c33e06c444527db80ee2326f97957470e039668745d4b3
 i7zn0u.u2wkh7s50y4zlf13
 ```
 
-### 10
-kickstart構成ファイルを作成する。
+### 11
+kickstart構成ファイルをoscip085の`/root/ostree-repo/ks.cfg`として作成する。この時のネットワーク関連の情報も手順２で作成した`byo_olvm.yaml`と同様にする。
 ```
 logging
 
@@ -190,7 +223,7 @@ ostreesetup --nogpg --osname ock --url http://10.122.15.85:8080/ostree --ref ock
 %end
 ```
 
-### 11
+### 12
 OSTreeアーカイブをホストするコンテナを起動する。
 
 `ocne image create`コマンドで作成されたコンテナイメージは、OSTreeアーカイブをホストする`nginx`のイメージ。ノードのアップグレードの際には、このコンテナを起動しておく必要がある。また、今回はkickstart構成ファイルとIgnition構成ファイルをこの`nginx`のコンテナでホストする。
@@ -210,26 +243,12 @@ Writing manifest to image destination
 
 次に、コンテナを起動する。コンテナの起動場所は、アップグレードするノードからアクセスできる場所ならばどこでも良い。今回はoscip085上で起動する。また、kickstart構成ファイルとIgnition構成ファイルはoscip085の`/root/ostree-repo/`配下に配置する。
 ```
-[root@oscip085]# podman run -p 80:8080 -v /root/ostree-repo:/usr/share/nginx/html/ks ock-ostree:1.26
+[root@oscip085]# podman run -d -p 8080:80 -v /root/ostree-repo:/usr/share/nginx/html/ks ock-ostree:1.26
 ```
 
 ## アップグレード実施
-OLVMの各仮想マシンはUEFIで動作していることを前提とする。
 
-
-OLVMの管理画面でoscip084の詳細ページに行き、実行の横にあるプルダウンを押して一回実行を選択。
-
-![](image.png)
-
-ブートオプションの中のCD/DVDにチェックをつけ、ブートシーケンスの一番目にCD/DVDを持ってくる。
-
-![alt text](image-1.png)
-
-起動したらすぐにコンソールを起動する。
-
-![](image-2.png)
-
-コンソールに下記のような画面が出力される。この状態で`e`キーを押し、起動パラメータを設定する。
+マシンをOL8.6のブートイメージから起動すると、コンソールに下記のような画面が出力される。この状態で`e`キーを押し、起動パラメータを設定する。
 
 ![alt text](image-3.png)
 
