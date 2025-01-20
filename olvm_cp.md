@@ -2,6 +2,14 @@ Phase2から実施。
 
 基本的には（https://github.com/oracle-cne/ocne/blob/main/doc/experimental/phase2/phase2.md）に従う。
 
+# 各ノードの役割
+- oscip081: オペレーターノード。基本的にはここで操作を行う。
+- oscip085: リポジトリをホストするノード。OSTreeのアーカイブを含んだnginxコンテナを起動するノード。また、kickstartファイルやIgnitionファイルも同コンテナでホストする。
+- oscip084: アップグレード対処の仮想サーバ。
+
+# 注意点
+今回の検証環境では、プライベートコンテナレジストリをポート443で公開していないため、内部的にコンテナイメージをプルするコマンドである`ocne cluster console`コマンドを利用できない。`ocne cluster console`は、対象ノードでコマンドを実行する為のコマンドなので、今回は直接対象ノードにSSHしてコマンドを実行することで問題を回避する。
+
 # OCK 2.*アップグレード手順
 ## 準備
 ### 1

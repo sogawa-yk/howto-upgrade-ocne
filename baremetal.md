@@ -2,6 +2,14 @@ Phase2から実施。
 
 基本的には（https://github.com/oracle-cne/ocne/blob/main/doc/experimental/phase2/phase2.md）に従う。
 
+# 各ノードの役割
+- oscip081: オペレーターノード。基本的にはここで操作を行う。
+- oscip085: リポジトリをホストするノード。OSTreeのアーカイブを含んだnginxコンテナを起動するノード。また、kickstartファイルやIgnitionファイルも同コンテナでホストする。
+- x6-2-04: アップグレード対処のベアメタルサーバ。
+
+# 注意点
+今回の検証環境では、プライベートコンテナレジストリをポート443で公開していないため、内部的にコンテナイメージをプルするコマンドである`ocne cluster console`コマンドを利用できない。`ocne cluster console`は、対象ノードでコマンドを実行する為のコマンドなので、今回は直接対象ノードにSSHしてコマンドを実行することで問題を回避する。
+
 # OCK 2.*アップグレード手順
 ## 準備
 ### 1
@@ -116,9 +124,6 @@ x6-2-04.jp.osc.oracle.com    Ready                         <none>          39d  
 対象ノードをドレインする。
 ```
 [root@oscip081 ~]# kubectl drain --ignore-daemonsets $TARGET_NODE
-node/x6-2-04.jp.osc.oracle.com cordoned
-Warning: ignoring DaemonSet-managed Pods: kube-system/kube-flannel-ds-cjhcg, kube-system/kube-proxy-pv2l8
-node/x-6-2-04.jp.osc.oracle.com drained
 ```
 
 ### 7
@@ -126,23 +131,6 @@ node/x-6-2-04.jp.osc.oracle.com drained
 ```
 [root@oscip081 ~]# ssh root@x6-2-04
 [root@x6-2-04 ~]# kubeadm reset -f
-[preflight] Running pre-flight checks
-W0108 16:45:05.699751 3029049 removeetcdmember.go:106] [reset] No kubeadm config, using etcd pod spec to get data directory
-[reset] Stopping the kubelet service
-[reset] Unmounting mounted directories in "/var/lib/kubelet"
-[reset] Deleting contents of directories: [/etc/kubernetes/manifests /var/lib/kubelet /etc/kubernetes/pki]
-[reset] Deleting files: [/etc/kubernetes/admin.conf /etc/kubernetes/kubelet.conf /etc/kubernetes/bootstrap-kubelet.conf /etc/kubernetes/controller-manager.conf /etc/kubernetes/scheduler.conf]
-
-The reset process does not clean CNI configuration. To do so, you must remove /etc/cni/net.d
-
-The reset process does not reset or clean up iptables rules or IPVS tables.
-If you wish to reset iptables, you must do so manually by using the "iptables" command.
-
-If your cluster was setup to utilize IPVS, run ipvsadm --clear (or similar)
-to reset your system's IPVS tables.
-
-The reset process does not clean your kubeconfig files and you must remove them manually.
-Please, check the contents of the $HOME/.kube/config file.
 ```
 対象ノードがNotReadyになっていることを確認する。
 ```
@@ -166,24 +154,16 @@ x6-2-04.jp.osc.oracle.com    NotReady,SchedulingDisabled   <none>          33d  
 ### 9
 Ignitionファイルを生成し、生成したIgnitionファイルを配布するwebサーバのホスト（ここではoscip085）にコピーしておく。
 ```
-[root@oscip081 ~]# ocne cluster join -c ~/.ocne/byo_olvm.yaml -k ~/kubeconfig.oscjpenv.oscjpcluster -n 1 > control-plane-3.ign
+[root@oscip081 ~]# ocne cluster join -c ~/.ocne/byo_olvm.yaml -k ~/kubeconfig.oscjpenv.oscjpcluster -w 1 > worker-3.ign
 Run these commands before booting the new node to allow it to join the cluster:
-	echo "chroot /hostroot kubeadm init phase upload-certs --certificate-key ea1c0d3489a6683bf1c33e06c444527db80ee2326f97957470e039668745d4b3 --upload-certs" | ocne cluster console --node oscip083.jp.osc.oracle.com
 	kubeadm token create i7zn0u.u2wkh7s50y4zlf13
-[root@oscip081 ~]# scp control-plane-3.ign root@oscip085:/root/ostree-repo
+[root@oscip081 ~]# scp worker-3.ign root@oscip085:/root/ostree-repo
 ```
 
 ### 10
-前述のとおり、OSC環境では`ocne cluster console`コマンドは利用できないため、ノードにログインして直接指示のコマンドを実行する。今回は`oscip083.jp.osc.oracle.com'にログインして実行する。
+前述のとおり、OSC環境では`ocne cluster console`コマンドは利用できないため、ノードにログインして直接指示のコマンドを実行する。今回は`oscip083.jp.osc.oracle.com'にログインして実行する（oscip083はコントロールプレーンのひとつ）。
 ```
 [root@oscip081 ~]# ssh root@oscip083
-[root@oscip083 ~]# kubeadm init phase upload-certs --certificate-key ea1c0d3489a6683bf1c33e06c444527db80ee2326f97957470e039668745d4b3 --upload-certs
-W0108 16:54:06.321745 3029120 version.go:104] could not fetch a Kubernetes version from the internet: unable to get URL "https://dl.k8s.io/release/stable-1.txt": Get "https://dl.k8s.io/release/stable-1.txt": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
-W0108 16:54:06.321835 3029120 version.go:105] falling back to the local client version: v1.26.15
-[upload-certs] Storing the certificates in Secret "kubeadm-certs" in the "kube-system" Namespace
-[upload-certs] Using certificate key:
-ea1c0d3489a6683bf1c33e06c444527db80ee2326f97957470e039668745d4b3
-
 [root@oscip083 ~]# kubeadm token create i7zn0u.u2wkh7s50y4zlf13
 i7zn0u.u2wkh7s50y4zlf13
 ```
