@@ -1,5 +1,7 @@
-# Typical build
+# ベアメタルの場合
 [text](https://docs.oracle.com/en/operating-systems/olcne/2.0/ockforge/install.html)ここの手順を実施して、`ock-forge`はインストール済みとする。また、このレポジトリにある`build.tar.gz`をオペレーターノードの`/root/images`配下に`base_image`というディレクトリとして展開済みとする。
+
+また、OSCのベアメタル環境では`move-gpt-header.sh`などで呼び出される`udevadm trigger --settle`の実行が終了せずOSが起動しない問題が発生していたため、その修正を含めた手順を記す。
 
 ## 事前準備
 アーカイブを作成する際にNBDデバイスが必要になるので、下記の手順で用意する。
@@ -14,11 +16,34 @@ qemu-nbd --disconnect /dev/nbd0
 rm -rf out/1.30
 ```
 
+## dracutモジュールの編集
+`/root/ock-forge/ock/configs/common/dracut-modules/move-gpt-header.sh`と、`/root/ock-forge/ock/configs/common/dracut-modules/partition-info.sh`の`udevadm trigger --settle`の部分を、`udevadm trigger`と`udevadm settle --timeout 300`に変更する。例えば、`move-gpt-header.sh`は以下のようになる。
+```sh
+#! /bin/bash
+#
+# Copyright (c) 2024, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl.
+set -e
+set -x
+
+ROOT=."/dev/disk/by-label/root"
+DEVICES=$(/usr/sbin/partition-info "${ROOT}")
+
+read -r -a ROOT_DEVICES <<< "$DEVICES"
+DISK="${ROOT_DEVICES[0]}"
+
+# Move the GPT header to the end of the disk
+sgdisk -e "${DISK}"
+udevadm trigger 
+udevadm settle --timeout 300
+```
+
 ## イメージのビルド
 `ock-forge`のディレクトリに移動。
 ```
 cd /root/ock-forge
 ```
+
 `ock-forge`を実行。
 ```
 ./ock-forge -d /dev/nbd0 -D out/1.30/boot.qcow2 -i container-registry.oracle.com/olcne/ock-ostree:1.30 -O ./out/1.30/archive.tar -C ./ock -c configs/config-1.30 -P -p file
@@ -32,7 +57,7 @@ cd /root/ock-forge
 scp -r out/1.30 oscip081:~/images
 ```
 
-ここからはオペレーターノードで操作する。コピーしてきた成果物を`ocne image upload`コマンドでプライベートレジストリにプッシュする。
+ここからはオペレーターノードで操作する。コピーしてきた成果物を`ocne image upload`コマンドでプライベートレジストリにプッシュする（この手順を含めないとOSTreeとして必要なデータが不足するため必ず実行する）。
 ```
 ocne image upload --type ostree --file archive.tar.gz --destination docker://oscip085:5000/olcne/ock-ostree:1.30 --arch amd64
 ```
