@@ -60,11 +60,11 @@ extraIgnitionInline: |
   variant: fcos
   version: 1.5.0
   passwd:
-  users:
-    - name: "docomo"
-      password_hash: iEa2Nhvu4.uUI
-      uid: 30000
-      home_dir: "/home/docomo"
+    users:
+      - name: "docomo"
+        password_hash: iEa2Nhvu4.uUI
+        uid: 30000
+        home_dir: "/home/docomo"
   storage:
     files:
       - path: /var/helloworld
@@ -154,7 +154,7 @@ x6-2-04.jp.osc.oracle.com    NotReady,SchedulingDisabled   <none>          33d  
 ### 9
 Ignitionファイルを生成し、生成したIgnitionファイルを配布するwebサーバのホスト（ここではoscip085）にコピーしておく。
 ```
-[root@oscip081 ~]# ocne cluster join -c ~/.ocne/byo_olvm.yaml -k ~/kubeconfig.oscjpenv.oscjpcluster -w 1 > worker-3.ign
+[root@oscip081 ~]# ocne cluster join -c ~/.ocne/byo.yaml -k ~/kubeconfig.oscjpenv.oscjpcluster -w 1 > worker-3.ign
 Run these commands before booting the new node to allow it to join the cluster:
 	kubeadm token create i7zn0u.u2wkh7s50y4zlf13
 [root@oscip081 ~]# scp worker-3.ign root@oscip085:/root/ostree-repo
@@ -193,7 +193,7 @@ user --name=ocne --groups=wheel --password=welcome
 
 services --enabled=ostree-remount
 
-bootloader --append "rw ip=10.122.9.14::10.122.8.1:255.255.248.0:oscip084:eno1:none rd.neednet=1 ignition.platform.id=metal ignition.config.url=http://10.122.15.85:8080/ks/control-plane-3.ign ignition.firstboot=1"
+bootloader --append "rw ip=10.122.9.14::10.122.8.1:255.255.248.0:oscip084:eno1:none rd.neednet=1 ignition.platform.id=metal ignition.config.url=http://10.122.15.85:8080/ks/worker-3.ign ignition.firstboot=1"
 
 ostreesetup --nogpg --osname ock --url http://10.122.15.85:8080/ostree --ref ock
 
